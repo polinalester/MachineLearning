@@ -36,7 +36,7 @@ for i in range(len(a)):
         elif a[i][3] != '-': # 40 000 records
             known.append(a[i])
 
-training_percent = 0.01
+training_percent = 0.1
 record_number = len(known)
 test = np.array(known)[int(record_number * training_percent) : record_number]
 train = np.array(known)[0:int(record_number * training_percent)]
@@ -53,8 +53,9 @@ y_task = []
 x_train = x_train.astype(np.float)
 x_test = x_test.astype(np.float)
 x_task = x_task.astype(np.float)
+y_train = y_train.astype(int)
+y_test = y_test.astype(int)
 print("Divided.")
-#x_train[0] = np.divide(x_train[0], max_longitude)
 
 print("Normalizing data...")
 max_longitude = max_longitude.astype(np.float)
@@ -84,11 +85,14 @@ for i in range(len(x_task)):
 print("Normalized.")
 x_first_train = x_train
 y_first_train = y_train
-for i in range(len(x_first_train)):
-    if y_train[i] == 0:
+
+for i in range(len(y_first_train)):
+    if y_train[i] == '0':
         y_first_train[i] = 1
     else:
         y_first_train[i] = -1
+
+y_first_train = y_first_train.astype(int)
 
 print("Building dividing hyperplain...")
 
@@ -100,8 +104,8 @@ def func(lmbda):
     for i in range(n):
         for j in range(n):
             temp = lmbda[i]*lmbda[j]
-            #temp = temp * y_first_train[i]
-            #temp = temp * y_first_train[j]
+            temp = temp * int(y_first_train[i])
+            temp = temp * int(y_first_train[j])
             x_dot = np.dot(x_first_train[i],x_first_train[j])
             temp = temp * x_dot
             result = result + temp
@@ -112,43 +116,58 @@ def func(lmbda):
     return result
 
 def func_deriv(lmbda):
-    result = 0
-    for i in range(n):
+    result = [-1] * len(lmbda)
+    for i in range(len(lmbda)):
+        #result[i] = -1
         for j in range(n):
-            temp = lmbda[i]+lmbda[j]
-            #temp = temp * y_first_train[i]
-            #temp = temp * y_first_train[j]
-            x_dot = np.dot(x_first_train[i],x_first_train[j])
-            temp = temp * x_dot
-            result = result + temp
+            if j != i:
+                temp = lmbda[j]
+                temp = temp * int(y_first_train[i])
+                temp = temp * int(y_first_train[j])
+                x_dot = np.dot(x_first_train[i],x_first_train[j])
+                temp = temp * x_dot
+                temp = temp / 2
+                result[i] = result[i] + temp
+        result[i] = result[i] + int(y_first_train[i])*int(y_first_train[i])*np.dot(x_first_train[i],x_first_train[i])
             #result=result+lmbda[i]*lmbda[j]*y_first_train[i]*y_first_train[j]*np.dot(x_first_train[i],x_first_train[j])
-    result = result/2
     return result
 
-w = 0
+#learning
+w = [0] * len(x_first_train[0])
 b = 0
 C = 1
 lambda0 = [0] * n #initial point
 print("Initialazing bounds & constraints...")
 bnds = [[0,C]] * n
+print(len(y_first_train))
+
+#cons = ({'type' : 'eq',
+#         'fun' : lambda lmbda : np.dot(lmbda,y_first_train),
+#         'jac' : lambda lmbda : np.sum(y_first_train)})
 cons = ({'type' : 'eq',
-         'fun' : lambda lmbda : np.dot(lmbda,y_first_train),
-         'jac' : lambda lmbda : np.sum(y_first_train)})
+         'fun' : lambda lmbda : np.dot(lmbda,y_first_train)})
 #res = minimize(func, lambda0, method = 'SLSQP', bounds = bnds, constraints = cons)
 
 print("Minimizing Lagrangian...")
 
-res = minimize(func, lambda0, method = 'SLSQP', bounds = bnds)
+res = minimize(func, lambda0, jac = func_deriv, method = 'SLSQP', bounds = bnds, constraints = cons)
+opt_lambda = res.x
 
 print("Minimized.")
-
 print("Calculating wx+b=0...")
 print("Calculating w...")
 for i in range(n):
-    w = w + lmbda[i]*y[i]*x_train[i]
+    for j in range(len(x_first_train[0])):
+        w[j] = w[j] + opt_lambda[i]*int(y_first_train[i])*x_first_train[i][j]
+print(w)
 print("Calculated.")
 print("Calculating b...")
-b = np.dot(w,x[0]) - y[0]
+
+b = np.dot(w,x_first_train[0])
+b = b - int(y_first_train[0])
+#for i in range(len(x_first_train[0])):
+#    b[i] = w[i]*x_first_train[0][i] - int(y_first_train[0])
+print(b)
 print("Calculated.")
 
 print("Classifying data...")
@@ -156,13 +175,19 @@ print("Classifying data...")
 def classify(x):
     return np.sign(np.dot(w,x)+b)
 
+y_classified = []
+for j in range(len(x_test)):
+    x_class = classify(x_test[i])
+    y_classified.append(x_class)
 print("Classified.")
 
 print("Writing data to output file...")
 
 with open("result.txt","w",newline="") as file:
-    for i in range(len(y_test)):
-        file.write(y_test[i])
+    for i in range(len(x_test)):
+        file.write(str(y_classified[i]))
+        file.write("\t")
+        file.write(str(y_test[i]))
         file.write("\n")
-
 print("Finished.")
+
